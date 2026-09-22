@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Fitness Form Checker</title>
+  <style>
+    :root {
+      --background: #09111f;
+      --panel: #111d31;
+      --panel-border: #263855;
+      --text: #f6f8ff;
+      --muted: #9eabc2;
+      --blue: #39a7ff;
+      --pink: #ff4f9a;
+      --green: #35d08a;
+      --yellow: #ffc857;
+      --red: #ff6489;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 50% -10%, #203b65 0, transparent 42%),
+        var(--background);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 44px;
+    }
+
+    header { margin-bottom: 24px; }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      letter-spacing: -0.05em;
+    }
+    header p { margin: 0; color: var(--muted); }
+
+    .camera-card {
+      overflow: hidden;
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      background: rgba(17, 29, 49, .94);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, .26);
+    }
+
+    .video-wrap {
+      position: relative;
+      display: grid;
+      min-height: 420px;
+      place-items: center;
+      overflow: hidden;
+      background: #050a13;
+    }
+
+    video, canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 70vh;
+      object-fit: contain;
+    }
+
+    video {
+      transform: scaleX(-1);
+      background: #050a13;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      height: 100%;
+      pointer-events: none;
+      transform: scaleX(-1);
+    }
+
+    .camera-message {
+      position: absolute;
+      z-index: 2;
+      padding: 18px 22px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      border-top: 1px solid var(--panel-border);
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 18px;
+      color: white;
+      background: #2b3e60;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 750;
+    }
+
+    button.primary { background: linear-gradient(135deg, #1588ea, #7656e8); }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .camera-status { color: var(--muted); font-size: .92rem; }
+
+    .feedback {
+      margin-top: 20px;
+      padding: 24px;
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      background: rgba(17, 29, 49, .94);
+      text-align: center;
+    }
+
+    .feedback-label {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: .85rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    #feedback-message {
+      margin: 0;
+      color: var(--yellow);
+      font-size: clamp(2rem, 7vw, 4.2rem);
+      line-height: 1.05;
+      letter-spacing: -0.045em;
+    }
+
+    #feedback-detail {
+      min-height: 24px;
+      margin: 12px 0 0;
+      color: var(--muted);
+    }
+
+    .feedback.good #feedback-message { color: var(--green); }
+    .feedback.warning #feedback-message { color: var(--yellow); }
+    .feedback.bad #feedback-message { color: var(--red); }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 18px;
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: .88rem;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .dot.pink { background: var(--pink); }
+    .dot.blue { background: var(--blue); }
+
+    @media (max-width: 680px) {
+      main { width: min(100% - 20px, 1080px); padding-top: 24px; }
+      .video-wrap { min-height: 300px; }
+      .controls { align-items: stretch; }
+      button { flex: 1; }
+      .camera-status { width: 100%; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>AI Fitness Form Checker</h1>
+      <p>Live squat analysis powered by MediaPipe Pose.</p>
+    </header>
+
+    <section class="camera-card">
+      <div class="video-wrap">
+        <video id="camera" autoplay muted playsinline></video>
+        <canvas id="skeleton"></canvas>
+        <div id="camera-message" class="camera-message">Click “Start camera” to begin.</div>
+      </div>
+      <div class="controls">
+        <button id="start-camera" class="primary" type="button">Start camera</button>
+        <button id="stop-camera" type="button" disabled>Stop camera</button>
+        <span id="camera-status" class="camera-status">Camera is off.</span>
+      </div>
+    </section>
+
+    <section id="feedback" class="feedback warning" aria-live="polite">
+      <div class="feedback-label">Squat feedback</div>
+      <h2 id="feedback-message">Ready when you are</h2>
+      <p id="feedback-detail">Stand where your full body is visible, then start the camera.</p>
+      <div class="legend">
+        <span><i class="dot pink"></i> Body and fingers</span>
+        <span><i class="dot blue"></i> Face and body points</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script>
+    const video = document.getElementById("camera");
+    const canvas = document.getElementById("skeleton");
+    const canvasContext = canvas.getContext("2d");
+    const cameraMessage = document.getElementById("camera-message");
+    const startButton = document.getElementById("start-camera");
+    const stopButton = document.getElementById("stop-camera");
+    const cameraStatus = document.getElementById("camera-status");
+    const feedback = document.getElementById("feedback");
+    const feedbackMessage = document.getElementById("feedback-message");
+    const feedbackDetail = document.getElementById("feedback-detail");
+
+    let camera = null;
+    let stream = null;
+    let pose = null;
+    let faceMesh = null;
+    let hands = null;
+    let isRunning = false;
+    let latestPose = null;
+    let latestFace = null;
+    let latestHands = [];
+
+    const CONNECTIONS = [
+      [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21],
+      [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [11, 23],
+      [12, 24], [23, 24], [23, 25], [25, 27], [27, 29], [29, 31],
+      [24, 26], [26, 28], [28, 30], [30, 32]
+    ];
+
+    pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      smoothSegmentation: false,
+      minDetectionConfidence: 0.55,
+      minTrackingConfidence: 0.55
+    });
+    pose.onResults(handleResults);
+
+    faceMesh = new FaceMesh({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.55,
+      minTrackingConfidence: 0.55
+    });
+    faceMesh.onResults((results) => {
+      latestFace = results.multiFaceLandmarks?.[0] || null;
+      drawOverlay(results.image);
+    });
+
+    hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.55,
+      minTrackingConfidence: 0.55
+    });
+    hands.onResults((results) => {
+      latestHands = results.multiHandLandmarks || [];
+      drawOverlay(results.image);
+    });
+
+    startButton.addEventListener("click", startCamera);
+    stopButton.addEventListener("click", stopCamera);
+
+    async function startCamera() {
+      if (isRunning) return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+        isRunning = true;
+        startButton.disabled = true;
+        stopButton.disabled = false;
+        cameraMessage.style.display = "none";
+        cameraStatus.textContent = "Camera is live. Step back until your full body is visible.";
+        camera = new Camera(video, {
+          onFrame: async () => {
+            if (!isRunning) return;
+            await pose.send({ image: video });
+            await faceMesh.send({ image: video });
+            await hands.send({ image: video });
+          },
+          width: 1280,
+          height: 720
+        });
+        camera.start();
+      } catch (error) {
+        cameraStatus.textContent = "Camera access was blocked. Allow camera permission and try again.";
+        cameraMessage.textContent = "Camera permission is required.";
+        console.error(error);
+      }
+    }
+
+    function stopCamera() {
+      isRunning = false;
+      if (camera) camera.stop();
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      stream = null;
+      video.srcObject = null;
+      canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+      latestPose = null;
+      latestFace = null;
+      latestHands = [];
+      startButton.disabled = false;
+      stopButton.disabled = true;
+      cameraMessage.style.display = "block";
+      cameraMessage.textContent = "Click “Start camera” to begin.";
+      cameraStatus.textContent = "Camera is off.";
+      setFeedback("Ready when you are", "Stand where your full body is visible, then start the camera.", "warning");
+    }
+
+    function handleResults(results) {
+      if (!results.image) return;
+      latestPose = results.poseLandmarks || null;
+      drawOverlay(results.image);
+
+      if (!latestPose || latestPose.length < 33) {
+        setFeedback("Stand in front of the camera", "Make sure your shoulders, hips, knees, and ankles are visible.", "warning");
+        return;
+      }
+      checkSquat(latestPose);
+    }
+
+    function drawOverlay(image) {
+      if (!image) return;
+      canvas.width = image.width;
+      canvas.height = image.height;
+      canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+      drawPose(latestPose);
+      drawFace(latestFace);
+      
+      latestHands.forEach(drawHand);
+    }
+
+    function drawPose(landmarks) {
+      if (!landmarks) return;
+      canvasContext.lineWidth = Math.max(2, canvas.width / 500);
+      canvasContext.lineCap = "round";
+      canvasContext.strokeStyle = "#ff4f9a";
+      CONNECTIONS.forEach(([from, to]) => {
+        const first = landmarks[from];
+        const second = landmarks[to];
+        if (!first || !second || (first.visibility ?? 1) < .35 || (second.visibility ?? 1) < .35) return;
+        canvasContext.beginPath();
+        canvasContext.moveTo(first.x * canvas.width, first.y * canvas.height);
+        canvasContext.lineTo(second.x * canvas.width, second.y * canvas.height);
+        canvasContext.stroke();
+      });
+      canvasContext.fillStyle = "#39a7ff";
+      landmarks.forEach((landmark, index) => {
+        if (index < 11) return;
+        if ((landmark.visibility ?? 1) < .35) return;
+        canvasContext.beginPath();
+        canvasContext.arc(
+          landmark.x * canvas.width,
+          landmark.y * canvas.height,
+          Math.max(4, canvas.width / 170),
+          0,
+          Math.PI * 2
+        );
+        canvasContext.fill();
+      });
+    }
+
+    function drawFace(landmarks) {
+      if (!landmarks) return;
+      const lineWidth = Math.max(1, canvas.width / 900);
+      drawConnectors(canvasContext, landmarks, FACEMESH_TESSELATION, {
+        color: "#4ddcff",
+        lineWidth
+      });
+    }
+
+    function drawHand(landmarks) {
+      const lineWidth = Math.max(2, canvas.width / 500);
+      drawConnectors(canvasContext, landmarks, HAND_CONNECTIONS, {
+        color: "#ff4f9a",
+        lineWidth
+      });
+      const radius = Math.max(3, canvas.width / 190);
+      const palmLandmarks = new Set([0, 5, 9, 13, 17]);
+      landmarks.forEach((landmark, index) => {
+        canvasContext.beginPath();
+        canvasContext.arc(
+          landmark.x * canvas.width,
+          landmark.y * canvas.height,
+          radius,
+          0,
+          Math.PI * 2
+        );
+        canvasContext.fillStyle = palmLandmarks.has(index) ? "#2697ff" : "#ff2f83";
+        canvasContext.fill();
+      });
+    }
+
+    function checkSquat(landmarks) {
+      const leftShoulder = landmarks[11];
+      const rightShoulder = landmarks[12];
+      const leftHip = landmarks[23];
+      const rightHip = landmarks[24];
+      const leftKnee = landmarks[25];
+      const rightKnee = landmarks[26];
+      const leftAnkle = landmarks[27];
+      const rightAnkle = landmarks[28];
+      const required = [leftShoulder, rightShoulder, leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle];
+
+      if (required.some((landmark) => !landmark || (landmark.visibility ?? 1) < .45)) {
+        setFeedback("Move your whole body into view", "Keep your shoulders, hips, knees, and ankles visible.", "warning");
+        return;
+      }
+
+      const shoulder = midpoint(leftShoulder, rightShoulder);
+      const hip = midpoint(leftHip, rightHip);
+      const knee = midpoint(leftKnee, rightKnee);
+      const ankle = midpoint(leftAnkle, rightAnkle);
+      const leftKneeAngle = jointAngle(leftHip, leftKnee, leftAnkle);
+      const rightKneeAngle = jointAngle(rightHip, rightKnee, rightAnkle);
+      const kneeAngle = Math.min(leftKneeAngle, rightKneeAngle);
+      const hipWidth = Math.abs(leftHip.x - rightHip.x);
+      const kneeWidth = Math.abs(leftKnee.x - rightKnee.x);
+      const ankleWidth = Math.abs(leftAnkle.x - rightAnkle.x);
+      const kneesCaving = hipWidth > .035 && kneeWidth < hipWidth * .68 && kneeWidth < ankleWidth * .9;
+      const torsoLean = Math.abs(Math.atan2(shoulder.x - hip.x, hip.y - shoulder.y) * 180 / Math.PI);
+      const hipsLow = hip.y > knee.y - .035;
+      const isSquatting = kneeAngle < 155 || hipsLow;
+
+      if (!isSquatting) {
+        setFeedback("Ready when you are", "Lower into a squat to check your alignment.", "warning");
+      } else if (kneesCaving) {
+        setFeedback("Push your knees outward", "Keep your knees tracking in line with your toes.", "bad");
+      } else if (torsoLean > 42) {
+        setFeedback("Keep your back straight", "Lift your chest slightly and brace your core.", "bad");
+      } else if (!hipsLow) {
+        setFeedback("Go lower", "Aim for your hips to reach knee level or slightly below.", "warning");
+      } else {
+        setFeedback("Good form!", "Strong depth, knee tracking, and torso control.", "good");
+      }
+    }
+
+    function midpoint(first, second) {
+      return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+    }
+
+    function jointAngle(first, middle, last) {
+      const firstVector = { x: first.x - middle.x, y: first.y - middle.y };
+      const lastVector = { x: last.x - middle.x, y: last.y - middle.y };
+      const dot = firstVector.x * lastVector.x + firstVector.y * lastVector.y;
+      const lengths = Math.hypot(firstVector.x, firstVector.y) * Math.hypot(lastVector.x, lastVector.y);
+      if (!lengths) return 180;
+      return Math.acos(Math.max(-1, Math.min(1, dot / lengths))) * 180 / Math.PI;
+    }
+
+    function setFeedback(message, detail, type) {
+      feedback.className = `feedback ${type}`;
+      feedbackMessage.textContent = message;
+      feedbackDetail.textContent = detail;
+    }
+  </script>
+</body>
+</html>
+111
